@@ -4,7 +4,10 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "test": "node --test scripts/audit.cjs",
     "dev": "vite",
+    "dev:prod": "vite --mode production --host 127.0.0.1 --port 5173 --strictPort",
+    "preview:prod": "npm run build && vite preview --host 127.0.0.1 --port 4173 --strictPort",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview"

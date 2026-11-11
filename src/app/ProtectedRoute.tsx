@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { Navigate } from 'react-router-dom'
-import { useAuth } from './providers'
+import { useAuth } from './auth-context'
 
 type PerfilUsuario = 'tecnico' | 'coordenador' | 'estoque'
 

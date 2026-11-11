@@ -1,3 +1,5 @@
+import { Eventos } from './Eventos'
+
 export function Historico() {
-  return <h1>Histórico</h1>
+  return <Eventos historico />
 }

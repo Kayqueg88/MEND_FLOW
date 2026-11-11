@@ -1,4 +1,4 @@
-import { useAuth } from '../../app/providers'
+import { useAuth } from '../../app/auth-context'
 
 export function Perfil() {
   const { usuario } = useAuth()

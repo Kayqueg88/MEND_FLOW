@@ -1,128 +1,76 @@
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useState,
-  type ReactNode,
-} from 'react'
-
+import { useEffect, useState, type ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
-
-type PerfilUsuario = 'tecnico' | 'coordenador' | 'estoque'
-
-type UsuarioAplicacao = {
-  id: string
-  nome: string
-  email: string
-  perfil: PerfilUsuario
-}
-
-type AuthContextType = {
-  session: Session | null
-  usuario: UsuarioAplicacao | null
-  carregando: boolean
-}
-
-const AuthContext = createContext<AuthContextType | undefined>(undefined)
+import { AuthContext, type UsuarioAplicacao } from './auth-context'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [usuario, setUsuario] = useState<UsuarioAplicacao | null>(null)
   const [carregando, setCarregando] = useState(true)
-
-  async function carregarUsuario(userId: string) {
-    const { data, error } = await supabase
-      .from('usuarios')
-      .select('id, nome, email, perfil')
-      .eq('id', userId)
-      .single()
-
-    if (error) {
-      console.error('Erro ao carregar perfil:', error)
-      setUsuario(null)
-      return
-    }
-
-    setUsuario(data)
-  }
+  const [erroPerfil, setErroPerfil] = useState('')
+  const [tentativa, setTentativa] = useState(0)
 
   useEffect(() => {
     let ativo = true
+    let versao = 0
+    let usuarioAtual: UsuarioAplicacao | null = null
+    let sessaoAtual: Session | null = null
+    let consultaId: string | null = null
+    let recebeuEvento = false
 
-    async function recuperarSessao() {
-      setCarregando(true)
-
-      const { data, error } = await supabase.auth.getSession()
-
+    async function aplicarSessao(nova: Session | null) {
       if (!ativo) return
-
-      if (error) {
-        console.error('Erro ao recuperar sessão:', error)
-        setSession(null)
-        setUsuario(null)
-        setCarregando(false)
-        return
-      }
-
-      setSession(data.session)
-
-      if (data.session?.user) {
-        await carregarUsuario(data.session.user.id)
-      } else {
-        setUsuario(null)
-      }
-
-      if (ativo) {
-        setCarregando(false)
+      sessaoAtual = nova
+      setSession(nova)
+      const id = nova?.user.id
+      if (id && (usuarioAtual?.id === id || consultaId === id)) return
+      const atual = ++versao
+      usuarioAtual = null
+      consultaId = id ?? null
+      setUsuario(null)
+      setErroPerfil('')
+      setCarregando(Boolean(id))
+      if (!id) return
+      try {
+        const { data, error } = await supabase.from('usuarios')
+          .select('id, nome, email, perfil').eq('id', id).single()
+        if (!ativo || atual !== versao || sessaoAtual?.user.id !== id) return
+        if (error || !data || !['tecnico', 'coordenador', 'estoque'].includes(data.perfil)) {
+          throw new Error('Perfil indisponível')
+        }
+        usuarioAtual = data
+        setUsuario(data)
+      } catch {
+        if (ativo && atual === versao) {
+          setErroPerfil('Sua sessão foi autenticada, mas não foi possível carregar seu perfil. Tente novamente ou solicite a verificação do cadastro e das permissões.')
+        }
+      } finally {
+        if (ativo && atual === versao) {
+          consultaId = null
+          setCarregando(false)
+        }
       }
     }
 
-    recuperarSessao()
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, novaSession) => {
-      setCarregando(true)
-      setSession(novaSession)
-
-      if (novaSession?.user) {
-        carregarUsuario(novaSession.user.id).finally(() => {
-          if (ativo) {
-            setCarregando(false)
-          }
-        })
-      } else {
-        setUsuario(null)
-        setCarregando(false)
-      }
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nova) => {
+      recebeuEvento = true
+      void Promise.resolve().then(() => { if (ativo) void aplicarSessao(nova) })
     })
+    void supabase.auth.getSession().then(({ data, error }) => {
+      if (!ativo || recebeuEvento) return
+      if (error) throw error
+      return aplicarSessao(data.session)
+    }).catch(() => {
+      if (!ativo || recebeuEvento) return
+      setSession(null)
+      setUsuario(null)
+      setErroPerfil('Não foi possível recuperar sua sessão. Tente novamente.')
+      setCarregando(false)
+    })
+    return () => { ativo = false; ++versao; subscription.unsubscribe() }
+  }, [tentativa])
 
-    return () => {
-      ativo = false
-      subscription.unsubscribe()
-    }
-  }, [])
-
-  return (
-    <AuthContext.Provider
-      value={{
-        session,
-        usuario,
-        carregando,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
-  )
-}
-
-export function useAuth() {
-  const context = useContext(AuthContext)
-
-  if (!context) {
-    throw new Error('useAuth deve ser usado dentro do AuthProvider')
-  }
-
-  return context
+  return <AuthContext.Provider value={{ session, usuario, carregando, erroPerfil,
+    tentarNovamente: () => { setCarregando(true); setTentativa(v => v + 1) },
+  }}>{children}</AuthContext.Provider>
 }

@@ -1,12 +1,24 @@
 import { Link } from 'react-router-dom'
-import { useAuth } from '../../app/providers'
+import { useState } from 'react'
+import { useAuth } from '../../app/auth-context'
 import { supabase } from '../../lib/supabase'
 
 export function Home() {
   const { usuario } = useAuth()
+  const [erro, setErro] = useState('')
+  const [saindo, setSaindo] = useState(false)
 
   async function sair() {
-    await supabase.auth.signOut()
+    setSaindo(true)
+    setErro('')
+    try {
+      const { error } = await supabase.auth.signOut()
+      if (error) throw error
+    } catch {
+      setErro('Não foi possível sair. Verifique a conexão e tente novamente.')
+    } finally {
+      setSaindo(false)
+    }
   }
 
   return (
@@ -17,9 +29,10 @@ export function Home() {
         <p>Olá, {usuario?.nome}</p>
         <p>Perfil: {usuario?.perfil}</p>
 
-        <button onClick={sair}>
+        <button onClick={sair} disabled={saindo}>
           Sair
         </button>
+        {erro && <p role="alert">{erro}</p>}
       </header>
 
       <hr />

@@ -4,6 +4,7 @@ import {
   Route,
   Routes,
 } from 'react-router-dom'
+import { lazy, Suspense } from 'react'
 
 import { ProtectedRoute } from './app/ProtectedRoute'
 
@@ -12,14 +13,16 @@ import { Perfil } from './features/auth/Perfil'
 
 import { Home } from './features/eventos/Home'
 import { Eventos } from './features/eventos/Eventos'
-import { NovoEvento } from './features/eventos/NovoEvento'
+const DetalheEvento = lazy(() => import('./features/eventos/DetalheEvento').then(m => ({ default: m.DetalheEvento })))
+const NovoEvento = lazy(() => import('./features/eventos/NovoEvento').then(m => ({ default: m.NovoEvento })))
 import { Historico } from './features/eventos/Historico'
 import { Recebimentos } from './features/eventos/Recebimentos'
 
 function App() {
   return (
     <BrowserRouter>
-      <Routes>
+      <Suspense fallback={<p>Carregando página...</p>}><Routes>
+
         <Route
           path="/login"
           element={<Login />}
@@ -50,6 +53,21 @@ function App() {
         />
 
         <Route
+          path="/eventos/:id"
+          element={
+            <ProtectedRoute
+              perfisPermitidos={[
+                'tecnico',
+                'coordenador',
+                'estoque',
+              ]}
+            >
+              <DetalheEvento />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
           path="/coordenador/novo-evento"
           element={
             <ProtectedRoute
@@ -64,7 +82,7 @@ function App() {
           path="/historico"
           element={
             <ProtectedRoute
-              perfisPermitidos={['tecnico']}
+              perfisPermitidos={['tecnico', 'coordenador', 'estoque']}
             >
               <Historico />
             </ProtectedRoute>
@@ -97,11 +115,21 @@ function App() {
           }
         />
 
+        <Route path="/avisos" element={<ProtectedRoute perfisPermitidos={['coordenador']}>
+          <div><h1>Avisos</h1><p>Esta funcionalidade está em desenvolvimento.</p><a href="/">Voltar para o início</a></div>
+        </ProtectedRoute>} />
+
         <Route
           path="*"
-          element={<Navigate to="/" replace />}
+          element={
+            <Navigate
+              to="/"
+              replace
+            />
+          }
         />
-      </Routes>
+
+      </Routes></Suspense>
     </BrowserRouter>
   )
 }

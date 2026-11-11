@@ -1,4 +1,5 @@
-git add .# Logs
+# Logs
+.playwright-mcp/
 logs
 *.log
 npm-debug.log*

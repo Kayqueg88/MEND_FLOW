@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
-import { useAuth } from '../../app/providers'
+import { useAuth } from '../../app/auth-context'
 import { supabase } from '../../lib/supabase'
 
 export function Login() {
@@ -16,6 +16,8 @@ export function Login() {
     session,
     usuario,
     carregando,
+    erroPerfil,
+    tentarNovamente,
   } = useAuth()
 
   useEffect(() => {
@@ -30,27 +32,22 @@ export function Login() {
     setEntrando(true)
     setMensagem('')
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password: senha,
-    })
-
-    if (error) {
-      setMensagem('E-mail ou senha inválidos.')
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password: senha })
+      if (error) {
+        setMensagem(error.code === 'email_not_confirmed'
+          ? 'Confirme seu e-mail antes de entrar.'
+          : error.status === 429
+            ? 'Muitas tentativas. Aguarde alguns minutos e tente novamente.'
+            : error.code === 'invalid_credentials'
+              ? 'E-mail ou senha inválidos.'
+              : 'Não foi possível entrar. Verifique sua conexão e tente novamente.')
+      }
+    } catch {
+      setMensagem('Não foi possível entrar. Verifique sua conexão e tente novamente.')
+    } finally {
       setEntrando(false)
-      return
     }
-
-    /*
-      Não fazemos navigate('/') aqui.
-
-      Agora esperamos o AuthProvider confirmar:
-      1. a sessão;
-      2. o usuário;
-      3. o perfil.
-    */
-
-    setEntrando(false)
   }
 
   return (
@@ -98,7 +95,10 @@ export function Login() {
         </button>
       </form>
 
-      {mensagem && <p>{mensagem}</p>}
+      {mensagem && <p role="alert">{mensagem}</p>}
+      {erroPerfil && <div role="alert"><p>{erroPerfil}</p>
+        <button type="button" disabled={carregando} onClick={tentarNovamente}>Tentar carregar novamente</button>
+      </div>}
     </div>
   )
 }
