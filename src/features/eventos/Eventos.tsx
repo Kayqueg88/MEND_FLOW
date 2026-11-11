@@ -1,14 +1,23 @@
 import type { Evento as DadosEvento } from './tipos-evento'
-import { traduzirStatus } from './formatacao-evento'
+import { formatarData, traduzirStatus } from './formatacao-evento'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import { useAuth } from '../../app/auth-context'
 import { supabase } from '../../lib/supabase'
 
-type Evento = Pick<DadosEvento, 'id' | 'cliente_nome' | 'cliente_contato' | 'endereco' | 'inicio' | 'fim' | 'possui_grade' | 'status'>
+type Evento = Pick<DadosEvento, 'id' | 'cliente_nome' | 'cliente_contato' | 'endereco' | 'inicio' | 'fim' | 'possui_grade' | 'status' | 'iniciado_em' | 'finalizado_em'>
 
 type FiltroEventos = 'todos' | 'para_fazer' | 'concluidos'
+
+function formatarDuracao(inicio: string | null, fim: string | null) {
+  if (!inicio || !fim) return '—'
+  const minutos = Math.floor((Date.parse(fim) - Date.parse(inicio)) / 60_000)
+  if (!Number.isFinite(minutos) || minutos < 0) return '—'
+  const horas = Math.floor(minutos / 60)
+  const restante = minutos % 60
+  return horas ? [`${horas}h`, restante && `${restante} min`].filter(Boolean).join(' ') : `${minutos} min`
+}
 
 export function Eventos({ historico = false }: { historico?: boolean } = {}) {
   const { usuario } = useAuth()
@@ -16,7 +25,7 @@ export function Eventos({ historico = false }: { historico?: boolean } = {}) {
   const [eventos, setEventos] = useState<Evento[]>([])
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState('')
-  const [{ pagina, filtro }, setConsulta] = useState<{ pagina: number; filtro: FiltroEventos }>(
+  const [{ pagina, filtro, busca }, setConsulta] = useState<{ pagina: number; filtro: FiltroEventos; busca?: string }>(
     () => ({ pagina: 0, filtro: historico ? 'concluidos' : 'todos' }),
   )
   const [temProxima, setTemProxima] = useState(false)
@@ -36,11 +45,19 @@ export function Eventos({ historico = false }: { historico?: boolean } = {}) {
       try {
         if (!usuario) return
         const campos = 'id, cliente_nome, cliente_contato, endereco, inicio, fim, possui_grade, status'
+          + (historico ? ', iniciado_em, finalizado_em' : '')
         let consulta = supabase.from('eventos').select(usuario.perfil === 'tecnico'
           ? `${campos}, eventos_tecnicos!inner(tecnico_id)` : campos)
         if (usuario.perfil === 'tecnico') consulta = consulta.eq('eventos_tecnicos.tecnico_id', usuario.id)
         if (filtro !== 'todos') consulta = consulta.in('status', filtro === 'para_fazer'
           ? ['agendado', 'em_andamento'] : ['finalizado', 'recebido'])
+        if (busca) {
+          const termo = busca.replace(/[\\%_*]/g, '\\$&').replace(/[\\"]/g, '\\$&')
+          consulta = consulta.or('cliente_nome.ilike."%' + termo + '%",endereco.ilike."%' + termo + '%"')
+        }
+        if (historico && filtro === 'concluidos') {
+          consulta = consulta.order('finalizado_em', { ascending: false, nullsFirst: false })
+        }
         const { data, error } = await consulta.order('inicio', { ascending: !historico || filtro === 'para_fazer' })
           .order('id', { ascending: true })
           .range(pagina * tamanhoPagina, pagina * tamanhoPagina + tamanhoPagina)
@@ -58,39 +75,36 @@ export function Eventos({ historico = false }: { historico?: boolean } = {}) {
     }
     void carregarEventos()
     return () => { ativo = false; controller.abort() }
-  }, [pagina, filtro, tentativa, usuario, historico])
+  }, [pagina, filtro, busca, tentativa, usuario, historico])
 
   return (
-    <div>
+    <section className="event-list">
       <header>
-        <Link to="/">
-          Voltar para Home
-        </Link>
-
         <h1>
           {historico ? 'Histórico de eventos' : usuario?.perfil === 'tecnico'
             ? 'Meus eventos'
             : 'Eventos'}
         </h1>
 
-        <p>
-          Usuário: {usuario?.nome}
-        </p>
-        <Link to={historico ? '/eventos' : '/historico'}>
-          {historico ? 'Ver agenda de eventos' : 'Ver histórico de eventos'}
-        </Link>
       </header>
 
-      <hr />
-
-      <main>
+      <div className="event-toolbar">
+        {historico && <form role="search" onSubmit={event => {
+          event.preventDefault()
+          const termo = String(new FormData(event.currentTarget).get('busca') ?? '').trim()
+          setConsulta(atual => ({ ...atual, pagina: 0, busca: termo }))
+        }}>
+          <label>Cliente ou endereço<input type="search" name="busca" maxLength={120} /></label>
+          <button type="submit">Buscar</button>
+          {busca && <button type="reset" onClick={() => setConsulta(atual => ({ ...atual, pagina: 0, busca: '' }))}>Limpar</button>}
+        </form>}
         <label>
           Filtrar eventos:{' '}
           <select value={filtro} onChange={event => {
             const valor = event.target.value
             if (valor !== filtro && (valor === 'todos' || valor === 'para_fazer' || valor === 'concluidos')) {
               setCarregando(true)
-              setConsulta({ pagina: 0, filtro: valor })
+              setConsulta(atual => ({ ...atual, pagina: 0, filtro: valor }))
             }
           }}>
             <option value="todos">Todos os eventos</option>
@@ -98,9 +112,7 @@ export function Eventos({ historico = false }: { historico?: boolean } = {}) {
             <option value="concluidos">Eventos concluídos</option>
           </select>
         </label>
-        <p>{filtro === 'para_fazer' ? 'Eventos agendados e em andamento.'
-          : filtro === 'concluidos' ? 'Eventos finalizados e recebidos pelo estoque.'
-            : 'Eventos de todos os status.'}</p>
+      </div>
         {carregando && (
           <p>Carregando eventos...</p>
         )}
@@ -114,14 +126,13 @@ export function Eventos({ historico = false }: { historico?: boolean } = {}) {
         )}
 
         {!carregando && !erro && eventos.length > 0 && (
-          <div>
+          <div className="event-grid">
             {eventos.map((evento) => (
-              <article key={evento.id}>
+              <article className="event-card" key={evento.id}>
                 <h2>{evento.cliente_nome}</h2>
 
                 <p>
-                  <strong>Status:</strong>{' '}
-                  {traduzirStatus(evento.status)}
+                  <span className="event-status">{traduzirStatus(evento.status)}</span>
                 </p>
 
                 <p>
@@ -129,14 +140,21 @@ export function Eventos({ historico = false }: { historico?: boolean } = {}) {
                   {evento.endereco}
                 </p>
 
+                {historico && (evento.status === 'finalizado' || evento.status === 'recebido') ? (
+                  <dl className="event-execution">
+                    <div><dt>Início real</dt><dd>{evento.iniciado_em ? formatarData(evento.iniciado_em) : '—'}</dd></div>
+                    <div><dt>Fim real</dt><dd>{evento.finalizado_em ? formatarData(evento.finalizado_em) : '—'}</dd></div>
+                    <div><dt>Duração real</dt><dd>{formatarDuracao(evento.iniciado_em, evento.finalizado_em)}</dd></div>
+                  </dl>
+                ) : <>
                 <p>
                   <strong>Início previsto:</strong>{' '}
-                  {new Date(evento.inicio).toLocaleString('pt-BR')}
+                  {formatarData(evento.inicio)}
                 </p>
 
                 <p>
                   <strong>Fim previsto:</strong>{' '}
-                  {new Date(evento.fim).toLocaleString('pt-BR')}
+                  {formatarData(evento.fim)}
                 </p>
 
                 <p>
@@ -150,22 +168,21 @@ export function Eventos({ historico = false }: { historico?: boolean } = {}) {
                     {evento.cliente_contato}
                   </p>
                 )}
+                </>}
 
                 <Link to={`/eventos/${evento.id}`}>
                   Ver evento
                 </Link>
 
-                <hr />
               </article>
             ))}
           </div>
         )}
-        {!carregando && !erro && <nav aria-label="Paginação de eventos">
+        {!carregando && !erro && (pagina > 0 || temProxima) && <nav className="event-pagination" aria-label="Paginação de eventos">
           <button type="button" disabled={pagina === 0} onClick={() => setConsulta(atual => ({ ...atual, pagina: Math.max(0, atual.pagina - 1) }))}>Anterior</button>
           <span> Página {pagina + 1} </span>
           <button type="button" disabled={!temProxima} onClick={() => setConsulta(atual => ({ ...atual, pagina: atual.pagina + 1 }))}>Próxima</button>
         </nav>}
-      </main>
-    </div>
+    </section>
   )
 }

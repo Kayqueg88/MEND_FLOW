@@ -51,8 +51,24 @@ export function Login() {
   }
 
   return (
-    <div>
-      <h1>Login</h1>
+    <div className="login-page">
+      <aside className="login-intro" aria-label="MEND Eventos">
+        <div className="login-intro__brand">MEND<span>EVENTOS</span></div>
+        <div className="login-intro__message">
+          <span className="login-intro__label">Gestão de eventos</span>
+          <h2>Cada evento.<br />Todos os detalhes.</h2>
+          <p>Da preparação à devolução, acompanhe o seu trabalho em um só lugar.</p>
+        </div>
+        <div className="login-intro__footer"><span aria-hidden="true" />Conexão entre equipe e operação</div>
+      </aside>
+      <section className="login-panel" aria-labelledby="login-titulo">
+      <div className="login-panel__content">
+      <div className="login-brand">MEND<span>EVENTOS</span></div>
+      <header className="login-heading">
+        <span className="login-intro__label">Área da equipe</span>
+        <h1 id="login-titulo">Bem-vindo de volta.</h1>
+        <p>Entre com sua conta para acessar os eventos.</p>
+      </header>
 
       <form onSubmit={fazerLogin}>
         <div>
@@ -67,6 +83,8 @@ export function Login() {
             onChange={(event) => setEmail(event.target.value)}
             autoComplete="email"
             required
+            placeholder="seu.email@empresa.com"
+            disabled={entrando || carregando}
           />
         </div>
 
@@ -82,6 +100,8 @@ export function Login() {
             onChange={(event) => setSenha(event.target.value)}
             autoComplete="current-password"
             required
+            placeholder="Digite sua senha"
+            disabled={entrando || carregando}
           />
         </div>
 
@@ -92,6 +112,7 @@ export function Login() {
           {entrando || carregando
             ? 'Entrando...'
             : 'Entrar'}
+          <span aria-hidden="true"> →</span>
         </button>
       </form>
 
@@ -99,6 +120,10 @@ export function Login() {
       {erroPerfil && <div role="alert"><p>{erroPerfil}</p>
         <button type="button" disabled={carregando} onClick={tentarNovamente}>Tentar carregar novamente</button>
       </div>}
+      <p className="login-help">Precisa de acesso? Fale com o coordenador da sua equipe.</p>
+      </div>
+      <footer className="login-panel__footer">MEND · Gestão de eventos</footer>
+      </section>
     </div>
   )
 }

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 
 import { useAuth } from '../../app/auth-context'
 import { supabase } from '../../lib/supabase'
@@ -174,10 +174,6 @@ export function NovoEvento() {
 
   return (
     <div>
-      <Link to="/">
-        Voltar para Home
-      </Link>
-
       <h1>Criar Evento</h1>
 
       {iniciada && <p role="status">Operação iniciada. Use o botão abaixo para concluir as etapas pendentes sem criar outro evento. Não feche esta tela durante a recuperação.</p>}
